@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eye Tracker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 16C8 7 24 7 30 16 24 25 8 25 2 16Z' fill='%2300809c'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root {
+  color-scheme: light dark;
+  --page: #edf3f4;
+  --panel: #fbfdfd;
+  --ink: #10252e;
+  --ink-2: #3d525b;
+  --muted: #566a72;
+  --grid: #d9e4e7;
+  --axis: #b9c9ce;
+  --hair: rgba(16, 37, 46, 0.12);
+  --iris: #00809c;
+  --lid: #c26300;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0e1b21;
+    --panel: #14242c;
+    --ink: #e9f1f2;
+    --ink-2: #b9c8cc;
+    --muted: #8fa2a9;
+    --grid: #1f323b;
+    --axis: #33494f;
+    --hair: rgba(233, 241, 242, 0.12);
+    --iris: #1fa0ba;
+    --lid: #c97a1f;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+
+.top {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 8px 24px; padding: 20px 0 12px;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 650; }
+.brand svg { width: 28px; height: 28px; flex: none; }
+.brand .iris { fill: var(--iris); }
+.brand .white { stroke: var(--ink); fill: none; stroke-width: 2; stroke-linejoin: round; }
+.brand .lid { stroke: var(--ink); fill: none; stroke-width: 2; stroke-linecap: round; display: none; }
+.brand[data-open="false"] .iris, .brand[data-open="false"] .white { display: none; }
+.brand[data-open="false"] .lid { display: block; }
+.live { color: var(--ink-2); font-size: 0.9375rem; }
+
+.dates { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 20px; }
+button, input[type="date"] {
+  font: inherit; color: var(--ink); background: var(--panel);
+  border: 1px solid var(--hair); border-radius: 6px; min-height: 38px; padding: 4px 12px;
+}
+button { cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--axis); }
+button:disabled { color: var(--muted); cursor: default; }
+:focus-visible { outline: 2px solid var(--iris); outline-offset: 2px; }
+
+.eyechart {
+  background: var(--panel);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  padding: clamp(32px, 6vw, 64px) 20px clamp(28px, 5vw, 52px);
+  text-align: center;
+  transition: opacity 120ms;
+}
+.line1 {
+  margin: 0;
+  font-size: clamp(7.5rem, 26vw, 13.5rem);
+  font-weight: 700;
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+}
+.unit { margin: 10px 0 0; font-size: clamp(1.25rem, 3vw, 1.625rem); font-weight: 600; }
+.context { margin: 4px auto 0; max-width: 46ch; color: var(--ink-2); }
+.context code { font-size: 0.9375em; }
+.line2, .line3 {
+  display: flex; flex-wrap: wrap; justify-content: center; margin: 0; padding: 0;
+}
+.line2 { gap: 20px clamp(36px, 8vw, 88px); margin-top: clamp(32px, 5vw, 48px); }
+.line3 { gap: 12px clamp(28px, 6vw, 64px); margin-top: clamp(24px, 4vw, 36px); }
+.line2 dd, .line3 dd { margin: 0; font-weight: 700; line-height: 1.15; }
+.line2 dd { font-size: clamp(2.25rem, 6vw, 3.25rem); letter-spacing: -0.01em; }
+.line3 dd { font-size: 1.375rem; }
+.line2 dt { color: var(--ink-2); font-size: 0.9375rem; }
+.line3 dt { color: var(--muted); font-size: 0.8125rem; }
+.line2 div, .line3 div { display: flex; flex-direction: column-reverse; }
+
+section { margin-top: 44px; transition: opacity 120ms; }
+h2 { margin: 0 0 4px; font-size: 1.375rem; line-height: 1.25; }
+.plot-title { margin: 22px 0 4px; font-size: 0.9375rem; font-weight: 600; }
+.plot-title span { color: var(--muted); font-weight: 400; }
+.plot { position: relative; border-radius: 4px; }
+.plot svg { display: block; width: 100%; height: auto; overflow: visible; }
+.plot .gridline { stroke: var(--grid); stroke-width: 1; }
+.plot .baseline { stroke: var(--axis); stroke-width: 1; }
+.plot .reference { stroke: var(--ink-2); stroke-width: 1; }
+.plot text { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.plot text.mark-label { fill: var(--ink); font-weight: 600; }
+.plot .bar { fill: var(--iris); }
+.plot .bar.peak { fill: var(--lid); }
+.plot .bar.active { opacity: 0.72; }
+.plot .hit { fill: transparent; }
+.plot.pickable .hit { cursor: pointer; }
+.empty-plot { color: var(--muted); font-size: 0.9375rem; padding: 14px 0; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 40px; }
+
+#tip {
+  position: fixed; z-index: 10; pointer-events: none; min-width: 120px;
+  background: var(--panel); border: 1px solid var(--hair); border-radius: 6px;
+  padding: 7px 11px; font-size: 0.875rem; line-height: 1.35;
+  box-shadow: 0 6px 20px -8px rgba(0, 0, 0, 0.35);
+}
+#tip strong { display: block; font-size: 1.0625rem; }
+#tip span { display: block; color: var(--ink-2); }
+
+details { margin-top: 44px; }
+summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+.tables { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 40px; margin-top: 12px; }
+.tables h3 { margin: 0 0 6px; font-size: 0.9375rem; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+th, td { padding: 5px 10px 5px 0; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--ink-2); font-weight: 600; }
+
+footer {
+  margin: 48px 0 40px; padding-top: 16px; border-top: 1px solid var(--grid);
+  color: var(--muted); font-size: 0.875rem; max-width: 72ch;
+}
+footer p { margin: 0 0 8px; }
+.eyechart.empty .line1, .eyechart.empty .unit, .eyechart.empty .line2, .eyechart.empty .line3 { display: none; }
+.eyechart.empty .context { margin: 0 auto; font-size: 1.125rem; color: var(--ink); }
+.notice { color: var(--ink-2); font-size: 0.9375rem; margin: 14px auto 0; max-width: 52ch; }
+[hidden] { display: none !important; }
+.busy { opacity: 0.55; }
+
+@media (max-width: 720px) {
+  .pair, .tables { grid-template-columns: 1fr; }
+  .line3 { gap: 12px 24px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand" id="brand" data-open="false">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <path class="white" d="M3 16C9 7.5 23 7.5 29 16 23 24.5 9 24.5 3 16Z"/>
+        <circle class="iris" cx="16" cy="16" r="5"/>
+        <path class="lid" d="M3 15C9 22.5 23 22.5 29 15M8 19.5 6 22.5M16 21.5V25M24 19.5 26 22.5"/>
+      </svg>
+      <span>Eye Tracker</span>
+    </div>
+    <div class="live" id="live" role="status">Checking</div>
+  </header>
+
+  <nav class="dates" aria-label="Choose a day">
+    <button id="prev" type="button">Previous day</button>
+    <input id="day" type="date" aria-label="Day to show">
+    <button id="next" type="button">Next day</button>
+    <button id="today" type="button">Today</button>
+  </nav>
+
+  <main>
+    <div class="eyechart" id="eyechart">
+      <p class="line1" id="rate">–</p>
+      <p class="unit" id="unit">blinks a minute</p>
+      <p class="context" id="context"></p>
+      <dl class="line2">
+        <div><dt>on screen</dt><dd id="screen">–</dd></div>
+        <div><dt>longest stare</dt><dd id="stare">–</dd></div>
+        <div><dt>real breaks</dt><dd id="breaks">–</dd></div>
+      </dl>
+      <dl class="line3">
+        <div><dt>blinks counted</dt><dd id="blinks">–</dd></div>
+        <div><dt>looked away</dt><dd id="looks">–</dd></div>
+        <div><dt>blink reminders</dt><dd id="stareAlerts">–</dd></div>
+        <div><dt>break reminders</dt><dd id="breakAlerts">–</dd></div>
+      </dl>
+      <p class="notice" id="notice" hidden></p>
+    </div>
+
+    <section id="daySection" aria-labelledby="dayHeading">
+      <h2 id="dayHeading">Through the day</h2>
+      <div class="plot-title">Blink rate <span>blinks a minute, every 10 minutes</span></div>
+      <div class="plot" id="ratePlot"></div>
+      <div class="plot-title">Longest stare <span>seconds without a blink, every 10 minutes</span></div>
+      <div class="plot" id="starePlot"></div>
+      <div class="plot-title">Screen time <span>minutes out of every 10</span></div>
+      <div class="plot" id="screenPlot"></div>
+    </section>
+
+    <section aria-labelledby="historyHeading">
+      <h2 id="historyHeading">Last 14 days</h2>
+      <div class="pair">
+        <div>
+          <div class="plot-title">Blink rate <span>blinks a minute</span></div>
+          <div class="plot pickable" id="historyRate"></div>
+        </div>
+        <div>
+          <div class="plot-title">Screen time <span>hours</span></div>
+          <div class="plot pickable" id="historyScreen"></div>
+        </div>
+      </div>
+    </section>
+
+    <details>
+      <summary>Show the numbers</summary>
+      <div class="tables">
+        <div id="dayNumbers">
+          <h3>This day, every 10 minutes</h3>
+          <div class="scroll"><table id="dayTable"></table></div>
+        </div>
+        <div>
+          <h3>Last 14 days</h3>
+          <div class="scroll"><table id="historyTable"></table></div>
+        </div>
+      </div>
+    </details>
+  </main>
+
+  <footer>
+    <p>Everything here stays on this computer. The camera image is read and thrown away; only totals like these are saved.</p>
+    <p>A real break means at least 20 seconds away from the screen. These numbers are estimates from a webcam, and are not a medical measurement.</p>
+  </footer>
+</div>
+<div id="tip" hidden role="tooltip"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const REST_RATE = 15;
+const LIVE_TEXT = {
+  tracking: "Tracking",
+  idle: "Running, nobody at the screen",
+  paused: "Paused",
+  "screen-locked": "Waiting, screen is locked",
+  "mic-in-use": "Waiting, microphone is in use",
+  "camera-unavailable": "Waiting, another app has the camera",
+  "not-running": "Not running",
+};
+
+let viewing = null;
+let todayIso = null;
+let lastBody = "";
+let latest = null;
+let loadId = 0;
+
+const pad = (n) => String(n).padStart(2, "0");
+const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parseIso = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const shiftDay = (s, n) => { const d = parseIso(s); d.setDate(d.getDate() + n); return isoDate(d); };
+const shortDate = (s) => parseIso(s).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+const longDate = (s) => parseIso(s).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+const clock = (ts) => { const d = new Date(ts * 1000); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+
+function duration(seconds) {
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${pad(s % 60)}s`;
+  return `${Math.floor(s / 3600)}h ${pad(Math.round((s % 3600) / 60))}m`;
+}
+
+const SVG = "http://www.w3.org/2000/svg";
+function el(name, attrs = {}, text) {
+  const node = document.createElementNS(SVG, name);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function niceScale(maximum, steps = 3) {
+  const raw = Math.max(maximum, 1) / steps;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const n = raw / magnitude;
+  const step = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 3 ? 3 : n <= 5 ? 5 : 10) * magnitude;
+  return { step, max: Math.ceil(maximum / step) * step };
+}
+
+function barPath(x, y, w, h) {
+  const r = Math.min(4, w / 2, h);
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+}
+
+const tip = $("tip");
+function showTip(lines, x, y) {
+  tip.replaceChildren();
+  lines.forEach(([tag, text]) => {
+    const node = document.createElement(tag);
+    node.textContent = text;
+    tip.append(node);
+  });
+  tip.hidden = false;
+  const box = tip.getBoundingClientRect();
+  tip.style.left = `${Math.min(Math.max(8, x + 14), innerWidth - box.width - 8)}px`;
+  tip.style.top = `${y - box.height - 12 < 8 ? y + 16 : y - box.height - 12}px`;
+}
+const hideTip = () => { tip.hidden = true; };
+
+/* slots: [{ value, tip: [[tag, text]...], peak?, label?, day? }], with value null for a gap */
+function columns(host, { slots, ticks, floor = 0, reference, ariaLabel, height = 150, onPick }) {
+  host.replaceChildren();
+  host.removeAttribute("tabindex");
+  host.removeAttribute("role");
+  host.removeAttribute("aria-label");
+  host.onkeydown = host.onfocus = host.onblur = host.onpointerleave = null;
+  if (!slots.some((s) => s.value !== null)) {
+    const note = document.createElement("div");
+    note.className = "empty-plot";
+    note.textContent = "Nothing recorded.";
+    host.append(note);
+    return;
+  }
+  const width = Math.max(host.clientWidth, 260);
+  const m = { top: 18, right: 4, bottom: 24, left: 30 };
+  const plotW = width - m.left - m.right;
+  const plotH = height - m.top - m.bottom;
+  const peak = Math.max(floor, ...slots.map((s) => s.value ?? 0));
+  const scale = niceScale(peak);
+  const yOf = (v) => m.top + plotH * (1 - v / scale.max);
+  const slotW = plotW / slots.length;
+  const barW = Math.max(1, Math.min(24, slotW - 2));
+
+  const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, "aria-hidden": "true" });
+  for (let v = 0; v <= scale.max + 1e-9; v += scale.step) {
+    const y = yOf(v);
+    if (v > 0) svg.append(el("line", { class: "gridline", x1: m.left, x2: width - m.right, y1: y, y2: y }));
+    svg.append(el("text", { x: m.left - 7, y: y + 4, "text-anchor": "end" }, String(Math.round(v * 10) / 10)));
+  }
+  svg.append(el("line", { class: "baseline", x1: m.left, x2: width - m.right, y1: yOf(0), y2: yOf(0) }));
+
+  ticks.forEach(({ index, text }) => {
+    const x = m.left + slotW * index;
+    const anchor = index === 0 ? "start" : x > width - 28 ? "end" : "middle";
+    svg.append(el("text", { x: anchor === "end" ? width - m.right : x, y: height - 6, "text-anchor": anchor }, text));
+  });
+
+  const marks = [];
+  slots.forEach((slot, index) => {
+    if (slot.value === null) return;
+    const x = m.left + slotW * index + (slotW - barW) / 2;
+    const y = yOf(slot.value);
+    const h = Math.max(yOf(0) - y, 1.5);
+    const bar = el("path", { class: slot.peak ? "bar peak" : "bar", d: barPath(x, yOf(0) - h, barW, h) });
+    const hit = el("rect", { class: "hit", x: m.left + slotW * index, y: m.top, width: slotW, height: plotH });
+    svg.append(bar, hit);
+    const position = marks.length;
+    marks.push({ slot, bar, cx: x + barW / 2 });
+    hit.addEventListener("pointermove", (e) => { activate(position); showTip(slot.tip, e.clientX, e.clientY); });
+    hit.addEventListener("pointerleave", () => { deactivate(); hideTip(); });
+    if (onPick && slot.day) hit.addEventListener("click", () => onPick(slot.day));
+  });
+
+  if (reference) {
+    const y = yOf(reference.value);
+    svg.append(el("line", { class: "reference", x1: m.left, x2: width - m.right, y1: y, y2: y }));
+    svg.append(el("text", { class: "mark-label", x: width - m.right, y: y - 5, "text-anchor": "end" }, reference.label));
+  }
+  const labelled = marks.find((mark) => mark.slot.label);
+  if (labelled) {
+    const y = yOf(labelled.slot.value) - 5;
+    const anchor = labelled.cx > width - 90 ? "end" : labelled.cx < m.left + 40 ? "start" : "middle";
+    svg.append(el("text", { class: "mark-label", x: labelled.cx, y, "text-anchor": anchor }, labelled.slot.label));
+  }
+  host.append(svg);
+
+  let active = null;
+  function deactivate() { if (active !== null) marks[active].bar.classList.remove("active"); active = null; }
+  function activate(index) {
+    deactivate();
+    active = index;
+    marks[index].bar.classList.add("active");
+  }
+  function showFocused() {
+    const box = host.getBoundingClientRect();
+    const mark = marks[active];
+    showTip(mark.slot.tip, box.left + (mark.cx / width) * box.width, box.top + 30);
+  }
+  host.tabIndex = 0;
+  host.setAttribute("role", "img");
+  host.setAttribute("aria-label", `${ariaLabel}. Use the arrow keys to read each value.`);
+  host.onfocus = () => { if (host.matches(":focus-visible")) { activate(marks.length - 1); showFocused(); } };
+  host.onblur = () => { deactivate(); hideTip(); };
+  host.onkeydown = (e) => {
+    if (active === null) return;
+    const move = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+    if (move) {
+      e.preventDefault();
+      activate(Math.min(marks.length - 1, Math.max(0, active + move)));
+      showFocused();
+    } else if (e.key === "Enter" && onPick && marks[active].slot.day) {
+      onPick(marks[active].slot.day);
+    }
+  };
+}
+
+function daySlots(timeline) {
+  if (!timeline.length) return { rows: [], ticks: [] };
+  const hour = (ts) => new Date(ts * 1000).getHours();
+  let first = hour(timeline[0].ts);
+  let last = hour(timeline[timeline.length - 1].ts) + 1;
+  if (last - first < 6) {
+    last = Math.min(24, first + 6);
+    first = Math.max(0, last - 6);
+  }
+  const dayOf = new Date(timeline[0].ts * 1000);
+  const byTs = new Map(timeline.map((row) => [row.ts, row]));
+  const rows = [];
+  for (let i = 0; i < (last - first) * 6; i++) {
+    const ts = new Date(dayOf).setHours(first, i * 10, 0, 0) / 1000;
+    rows.push({ ts, row: byTs.get(ts) ?? null });
+  }
+  const span = last - first;
+  const every = span <= 8 ? 1 : span <= 14 ? 2 : 3;
+  const ticks = [];
+  for (let h = first; h <= last; h += every) {
+    const index = (h - first) * 6;
+    if (index < rows.length) ticks.push({ index, text: `${pad(h)}:00` });
+  }
+  return { rows, ticks };
+}
+
+function drawDay(timeline) {
+  const { rows, ticks } = daySlots(timeline);
+  const window10 = (ts) => `${clock(ts)} to ${clock(ts + 600)}`;
+  const rate = rows.map(({ ts, row }) => ({
+    value: row?.blink_rate ?? null,
+    tip: row ? [["strong", `${row.blink_rate} a minute`], ["span", window10(ts)]] : [],
+  }));
+  columns($("ratePlot"), {
+    slots: rate, ticks, floor: REST_RATE + 3, ariaLabel: "Blink rate through the day",
+    reference: { value: REST_RATE, label: "Usual at rest, about 15" },
+  });
+
+  const maxStare = Math.max(0, ...rows.map(({ row }) => row?.longest_gap_s ?? 0));
+  let marked = false;
+  const stare = rows.map(({ ts, row }) => {
+    const isPeak = !marked && row && row.longest_gap_s === maxStare && maxStare > 0;
+    if (isPeak) marked = true;
+    return {
+      value: row ? row.longest_gap_s : null,
+      peak: isPeak,
+      label: isPeak ? `${Math.round(maxStare)}s at ${clock(ts)}` : undefined,
+      tip: row ? [["strong", duration(row.longest_gap_s)], ["span", window10(ts)]] : [],
+    };
+  });
+  columns($("starePlot"), { slots: stare, ticks, floor: 30, ariaLabel: "Longest stare through the day" });
+
+  const screen = rows.map(({ ts, row }) => ({
+    value: row ? row.screen_min : null,
+    tip: row ? [["strong", `${row.screen_min} minutes`], ["span", window10(ts)]] : [],
+  }));
+  columns($("screenPlot"), { slots: screen, ticks, floor: 10, height: 120, ariaLabel: "Screen time through the day" });
+}
+
+function drawHistory(history) {
+  const every = Math.ceil(history.length / 5);
+  const ticks = [];
+  for (let i = history.length - 1; i >= 0; i -= every) ticks.push({ index: i + 0.5, text: shortDate(history[i].day) });
+  const rate = history.map((d) => ({
+    value: d.blink_rate, day: d.day,
+    tip: d.blink_rate === null ? [] : [["strong", `${d.blink_rate} a minute`], ["span", longDate(d.day)]],
+  }));
+  columns($("historyRate"), {
+    slots: rate, ticks, floor: REST_RATE + 3, ariaLabel: "Blink rate over the last 14 days", onPick: openDay,
+    reference: { value: REST_RATE, label: "About 15 at rest" },
+  });
+  const screen = history.map((d) => ({
+    value: d.screen_min ? Math.round((d.screen_min / 60) * 10) / 10 : null, day: d.day,
+    tip: d.screen_min ? [["strong", duration(d.screen_min * 60)], ["span", longDate(d.day)]] : [],
+  }));
+  columns($("historyScreen"), { slots: screen, ticks, floor: 4, ariaLabel: "Screen time over the last 14 days", onPick: openDay });
+}
+
+function fillTable(table, headers, rows) {
+  table.replaceChildren();
+  const head = table.createTHead().insertRow();
+  headers.forEach((text) => { const th = document.createElement("th"); th.scope = "col"; th.textContent = text; head.append(th); });
+  const body = table.createTBody();
+  rows.forEach((row) => { const tr = body.insertRow(); row.forEach((text) => { tr.insertCell().textContent = text; }); });
+}
+
+function drawTables(timeline, history) {
+  $("dayNumbers").hidden = !timeline.length;
+  fillTable($("dayTable"), ["Time", "Blinks/min", "Longest stare", "Screen min"],
+    timeline.map((r) => [clock(r.ts), r.blink_rate ?? "–", duration(r.longest_gap_s), r.screen_min]));
+  fillTable($("historyTable"), ["Day", "Blinks/min", "Longest stare", "Screen", "Breaks"],
+    history.filter((d) => d.screen_min).reverse().map((d) => [
+      shortDate(d.day), d.blink_rate ?? "–", duration(d.longest_gap_s), duration(d.screen_min * 60), d.breaks,
+    ]));
+}
+
+function drawSummary(s, live) {
+  const tracked = s.blink_rate !== null;
+  const isToday = viewing === todayIso;
+  $("eyechart").classList.toggle("empty", !tracked);
+  $("daySection").hidden = !tracked;
+  $("rate").textContent = tracked ? Math.round(s.blink_rate) : "";
+  $("unit").textContent = isToday ? "blinks a minute today" : `blinks a minute on ${longDate(viewing)}`;
+  const context = $("context");
+  context.replaceChildren();
+  if (tracked) {
+    context.textContent = "People blink about 15 times a minute at rest, and about half that at a screen.";
+  } else if (isToday && live.state === "not-running") {
+    context.append("Nothing tracked today. Run ");
+    const cmd = document.createElement("code");
+    cmd.textContent = "eyetracker install";
+    context.append(cmd, " to start tracking in the background.");
+  } else if (isToday) {
+    context.textContent = "Tracking has started. Your numbers appear after your first minute at the screen.";
+  } else {
+    context.textContent = "Nothing tracked on this day.";
+  }
+  $("screen").textContent = duration(s.screen_min * 60);
+  $("stare").textContent = duration(s.longest_gap_s);
+  $("breaks").textContent = s.breaks;
+  $("blinks").textContent = s.blinks.toLocaleString();
+  $("looks").textContent = s.look_aways.toLocaleString();
+  $("stareAlerts").textContent = s.stare_alerts;
+  $("breakAlerts").textContent = s.break_alerts;
+  const notice = $("notice");
+  notice.hidden = !(s.fps !== null && s.fps < 12);
+  if (!notice.hidden) notice.textContent = `Warning: the camera averaged ${s.fps} frames a second, so some short blinks were probably missed. More light on your face helps.`;
+}
+
+function drawLive(live) {
+  const on = live.state === "tracking" || live.state === "idle";
+  $("brand").dataset.open = String(on);
+  let text = LIVE_TEXT[live.state] ?? live.state;
+  if (live.paused_until) {
+    text = `Paused until ${clock(live.paused_until)}`;
+  } else if (live.state === "tracking" && live.on_screen) {
+    text = `Tracking, ${live.blinks_last_minute} blinks in the last minute`;
+  } else if (live.state === "tracking") {
+    text = "Tracking, you are looking away";
+  }
+  $("live").textContent = text;
+}
+
+function drawAll(data) {
+  todayIso = data.today;
+  viewing = viewing ?? data.today;
+  $("day").max = data.today;
+  $("day").value = viewing;
+  $("next").disabled = viewing >= data.today;
+  $("today").disabled = viewing === data.today;
+  drawSummary(data.summary, data.live);
+  drawDay(data.timeline);
+  drawHistory(data.history);
+  drawTables(data.timeline, data.history);
+}
+
+async function load({ quiet = false } = {}) {
+  const id = ++loadId;
+  const groups = [$("eyechart"), $("daySection")];
+  if (!quiet) groups.forEach((g) => g.classList.add("busy"));
+  try {
+    const url = viewing ? `/api/data?day=${viewing}` : "/api/data";
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (id !== loadId) return;
+    drawLive(data.live);
+    const { live, ...rest } = data;
+    const body = JSON.stringify({ ...rest, state: live.state });
+    if (body !== lastBody) {
+      lastBody = body;
+      latest = data;
+      drawAll(data);
+    }
+  } catch {
+    if (id === loadId) $("live").textContent = "Lost contact with the dashboard. Run eyetracker dashboard again.";
+  } finally {
+    if (id === loadId) groups.forEach((g) => g.classList.remove("busy"));
+  }
+}
+
+function openDay(day) {
+  if (!day || day > todayIso) return;
+  viewing = day;
+  load();
+}
+
+$("prev").onclick = () => openDay(shiftDay(viewing, -1));
+$("next").onclick = () => openDay(shiftDay(viewing, 1));
+$("today").onclick = () => openDay(todayIso);
+$("day").onchange = (e) => openDay(e.target.value);
+
+let resizeTimer;
+new ResizeObserver(() => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (latest) drawAll(latest); }, 120);
+}).observe(document.body);
+
+setInterval(() => { if (!document.hidden) load({ quiet: true }); }, 5000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load({ quiet: true }); });
+load();
+</script>
+</body>
+</html>
